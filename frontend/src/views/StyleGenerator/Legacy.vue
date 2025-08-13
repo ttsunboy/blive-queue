@@ -334,7 +334,7 @@ ${this.animationStyle}
     },
     paddingStyle() {
       return `/* Reduce side padding */
-yt-live-chat-text-message-renderer {
+yt-live-chat-text-message-renderer.queue-nickname {
   padding-left: ${this.form.useBarsInsteadOfBg ? 20 : 4}px !important;
   padding-right: 4px !important;
 }`
@@ -380,7 +380,7 @@ yt-live-chat-text-message-renderer yt-live-chat-author-badge-renderer[type="memb
   ${this.form.memberUserNameColor ? `color: ${this.form.memberUserNameColor} !important;` : ''}
 }
 
-yt-live-chat-text-message-renderer #author-name {
+yt-live-chat-text-message-renderer.queue-nickname #author-name {
   ${this.form.showUserNames ? '' : 'display: none !important;'}
   ${this.form.userNameColor ? `color: ${this.form.userNameColor} !important;` : ''}
   font-family: "${common.cssEscapeStr(this.form.userNameFont)}"${common.FALLBACK_FONTS};
@@ -389,7 +389,7 @@ yt-live-chat-text-message-renderer #author-name {
 }
 
 ${!this.form.showColon ? '' : `/* Show colon */
-yt-live-chat-text-message-renderer #author-name::after {
+yt-live-chat-text-message-renderer.queue-nickname #author-name::after {
   content: ":";
   margin-left: ${this.form.outlineSize}px;
 }`}
@@ -537,12 +537,12 @@ yt-live-chat-ticker-sponsor-item-renderer * {
     getBgStyleForAuthorType(authorType, color) {
       let typeSelector = authorType ? `[author-type="${authorType}"]` : ''
       if (!this.form.useBarsInsteadOfBg) {
-        return `yt-live-chat-text-message-renderer${typeSelector},
+        return `yt-live-chat-text-message-renderer.queue-nickname${typeSelector},
 yt-live-chat-text-message-renderer${typeSelector}[is-highlighted] {
   ${color ? `background-color: ${color} !important;` : ''}
 }`
       } else {
-        return `yt-live-chat-text-message-renderer${typeSelector}::after {
+        return `yt-live-chat-text-message-renderer.queue-nickname${typeSelector}::after {
   ${color ? `border: 2px solid ${color};` : ''}
   content: "";
   position: absolute;

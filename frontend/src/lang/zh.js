@@ -1,8 +1,11 @@
 export default {
   sidebar: {
     home: '首页',
+    dash: '控制台',
     stylegen: '样式生成器',
     help: '帮助',
+    orig: '源·',
+    my: '改·',
     projectAddress: '项目地址',
     giftRecordOfficial: '官方打赏记录',
   },
@@ -38,7 +41,8 @@ export default {
     pinyin: '拼音',
     kana: '日文假名',
 
-    roomUrl: '房间URL',
+    roomUrl: '排队姬URL',
+    cookie: 'B站Cookie',
     copy: '复制',
     enterRoom: '进入房间',
     enterTestRoom: '进入测试房间',
@@ -85,10 +89,10 @@ export default {
     backgrounds: '背景',
     bgColor: '背景色',
     useBarsInsteadOfBg: '用条代替消息背景',
-    messageBgColor: '消息背景色',
-    ownerMessageBgColor: '主播消息背景色',
-    moderatorMessageBgColor: '房管消息背景色',
-    memberMessageBgColor: '舰长消息背景色',
+    messageBgColor: '排队名字背景色',
+    ownerMessageBgColor: '总督名字背景色',
+    moderatorMessageBgColor: '提督名字背景色',
+    memberMessageBgColor: '舰长名字背景色',
 
     scAndNewMember: '打赏、舰长',
     firstLineFont: '第一行字体',

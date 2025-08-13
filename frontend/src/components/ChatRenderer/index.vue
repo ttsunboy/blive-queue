@@ -4,13 +4,26 @@
       <div ref="scroller" id="item-scroller" class="style-scope yt-live-chat-item-list-renderer animated">
         <div ref="itemOffset" id="item-offset" class="style-scope yt-live-chat-item-list-renderer" style="height: 0px;">
           <div ref="items" id="items" class="style-scope yt-live-chat-item-list-renderer" style="overflow: hidden">
-            <template v-for="(w, pos) in waitingList">
-              <text-message :key="w.uid"
-                            class="style-scope yt-live-chat-item-list-renderer"
-                            :authorName="w.nickname"
-                            :content="`${pos+1}. ${w.nickname}`"
-              ></text-message>
-            </template>
+            <div id="content" class="style-scope yt-live-chat-text-message-renderer">
+              <table>
+                <tr>
+                  <th><span id="queue-header">#</span></th>
+                  <th><span id="queue-header">昵称</span></th>
+                  <th><span id="queue-header">礼物</span></th>
+                </tr>
+                <template v-for="(w, pos) in waitingList">
+                  <text-message
+                    :key="w.uid"
+                    class="style-scope yt-live-chat-item-list-renderer"
+                    :authorName="w.nickname"
+                    :authorType="w.level"
+                    :queuePos="(parseInt(pos)+1-parseInt(waitingList[0].now))"
+                    :gifts="w.gifts"
+                    :queueNow="w.now"
+                  ></text-message>
+                </template>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -45,7 +58,7 @@ export default {
     }
   },
   mounted () {
-    this.scrollToBottom()
+    //this.scrollToBottom()
   },
   beforeDestroy () {},
   methods: {

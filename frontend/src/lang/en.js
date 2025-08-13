@@ -1,8 +1,11 @@
 export default {
   sidebar: {
     home: 'Home',
+    dash: 'Dashboard',
     stylegen: 'Style generator',
     help: 'Help',
+    orig: 'Orig. ',
+    my: 'My ',
     projectAddress: 'Project address',
     giftRecordOfficial: 'Official Super Chat record',
   },
@@ -38,7 +41,8 @@ export default {
     pinyin: 'Pinyin',
     kana: 'Kana',
 
-    roomUrl: 'Room URL',
+    roomUrl: 'Queue URL',
+    cookie: 'Bilibili Cookie',
     copy: 'Copy',
     enterRoom: 'Enter room',
     enterTestRoom: 'Enter test room',
@@ -86,9 +90,9 @@ export default {
     bgColor: 'Background color',
     useBarsInsteadOfBg: 'Use bars instead of backgrounds',
     messageBgColor: 'Message background color',
-    ownerMessageBgColor: 'Owner background color',
-    moderatorMessageBgColor: 'Moderator background color',
-    memberMessageBgColor: 'Member background color',
+    ownerMessageBgColor: 'Governor background color',
+    moderatorMessageBgColor: 'Admiral background color',
+    memberMessageBgColor: 'Captain background color',
 
     scAndNewMember: 'Super Chat / New member',
     firstLineFont: 'First line font',

@@ -12,9 +12,9 @@ export const AUTHOR_TYPE_TO_TEXT = [
 
 export const GUARD_LEVEL_TO_TEXT = [
   '',
-  '总督',
+  '舰长',
   '提督',
-  '舰长'
+  '总督'
 ]
 
 export const MESSAGE_TYPE_TEXT = 0

@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
-	log "github.com/sirupsen/logrus"
-	"github.com/tidwall/gjson"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 )
 
 var (
@@ -76,16 +77,12 @@ func checkPort(port int) bool {
 	if err != nil {
 		return false
 	}
-	err = s.Close()
-	if err != nil {
-		return false
-	}
-	return true
+	return s.Close() == nil
 }
 
 func checkUpdate() {
 	log.Info("正在检查更新")
-	updateURL := "https://api.github.com/repos/Akegarasu/blive-queue/releases/latest"
+	updateURL := "https://api.github.com/repos/ttsunboy/blive-queue/releases/latest"
 	j, err := GetJson(updateURL, nil)
 	if err != nil {
 		log.Error("检查更新失败~ 请手动检查更新")

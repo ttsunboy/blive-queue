@@ -41,7 +41,7 @@ func DefaultRule() *Rule {
 		cancelKeyword:  "取消排队",
 		guardOnly:      false,
 		fuzzyMatch:     false,
-		maxQueueLength: 20,
+		maxQueueLength: 255,
 		minMedalLevel:  0,
 		admins:         nil,
 		blockUsers:     nil,
@@ -77,8 +77,5 @@ func (r Rule) Filter(user *message.User, roomID string) bool {
 // CheckIsAdmin 检查是否为管理员
 func (r Rule) CheckIsAdmin(u *message.User) bool {
 	uid := strconv.Itoa(u.Uid)
-	if InSlice(r.admins, uid) {
-		return true
-	}
-	return false
+	return InSlice(r.admins, uid)
 }

@@ -79,14 +79,14 @@
 
           <el-tab-pane :label="$t('home.advanced')">
             <el-row :gutter="20">
-              <!--              <el-form-item label="管理员UID">-->
-              <!--                <el-input-->
-              <!--                    v-model="form.admins"-->
-              <!--                    type="textarea"-->
-              <!--                    :rows="5"-->
-              <!--                    :placeholder="$t('home.onePerLine')"-->
-              <!--                ></el-input>-->
-              <!--              </el-form-item>-->
+              <el-form-item label="管理员UID">
+                <el-input
+                    v-model="form.admins"
+                    type="textarea"
+                    :rows="5"
+                    :placeholder="$t('home.onePerLine')"
+                ></el-input>
+              </el-form-item>
               <el-form-item label="屏蔽UID">
                 <el-input
                     v-model="form.blockUsers"
@@ -99,6 +99,20 @@
           </el-tab-pane>
         </el-tabs>
       </el-form>
+    </p>
+
+    <p>
+      <el-card>
+        <el-form :model="form" label-width="150px">
+          <el-form-item :label="$t('home.cookie')">
+            <el-input
+                v-model="form.cookie"
+                type="textarea"
+                :rows="5"
+            ></el-input>
+          </el-form-item>
+        </el-form>
+      </el-card>
     </p>
 
     <p>
@@ -156,6 +170,7 @@ export default {
     return {
       form: {
         roomId: parseInt(window.localStorage.roomId || '1'),
+        cookie: window.localStorage.cookie || '',
         ...chatConfig.getLocalConfig(),
       },
     }
@@ -168,6 +183,7 @@ export default {
   watch: {
     roomUrl: _.debounce(function () {
       window.localStorage.roomId = this.form.roomId
+      window.localStorage.cookie = this.form.cookie
       chatConfig.setLocalConfig(this.form)
     }, 500),
   },
@@ -191,7 +207,11 @@ export default {
     connectRoom() {
       chatConfig.setLocalConfig(this.form)
       client.emit('APPLY_RULE', this.form)
-      client.emit('CONNECT_DANMAKU', this.form.roomId.toString())
+      // Send both roomId and cookie
+      client.emit('CONNECT_DANMAKU', {
+        roomId: this.form.roomId.toString(),
+        cookie: this.form.cookie
+      })
       this.$message({
         message: '连接到房间',
         duration: '1000',

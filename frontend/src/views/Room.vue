@@ -34,7 +34,7 @@ export default {
       message: 'Loaded',
       duration: '500'
     })
-    window.setTimeout(() => {
+    window.setInterval(() => {
       client.syncData()
     }, 1500)
   },

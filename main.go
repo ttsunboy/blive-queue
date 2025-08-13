@@ -36,7 +36,7 @@ func main() {
 	defer s.DanmakuClient.Stop()
 	if !dev {
 		gin.SetMode(gin.ReleaseMode)
-		webPort = 18303
+		webPort = 13579
 		go checkUpdate()
 	}
 	router := gin.New()

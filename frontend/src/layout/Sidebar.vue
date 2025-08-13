@@ -11,17 +11,22 @@
         <i class="el-icon-s-home"></i>{{ $t('sidebar.home') }}
       </el-menu-item>
       <el-menu-item :index="$router.resolve({name: 'control'}).href">
-        <i class="el-icon-menu"></i>控制台
+        <i class="el-icon-menu"></i>{{ $t('sidebar.dash') }}
       </el-menu-item>
       <el-menu-item :index="$router.resolve({name: 'stylegen'}).href">
-        <i class="el-icon-s-open"></i>样式生成器
+        <i class="el-icon-s-open"></i>{{ $t('sidebar.stylegen') }}
       </el-menu-item>
       <el-menu-item :index="$router.resolve({name: 'help'}).href">
         <i class="el-icon-question"></i>{{ $t('sidebar.help') }}
       </el-menu-item>
       <a href="https://github.com/Akegarasu/blive-queue" target="_blank">
         <el-menu-item>
-          <i class="el-icon-share"></i>{{ $t('sidebar.projectAddress') }}
+          <i class="el-icon-share"></i>{{ $t('sidebar.orig') }}{{ $t('sidebar.projectAddress') }}
+        </el-menu-item>
+      </a>
+      <a href="https://github.com/ttsunboy/blive-queue" target="_blank">
+        <el-menu-item>
+          <i class="el-icon-share"></i>{{ $t('sidebar.my') }}{{ $t('sidebar.projectAddress') }}
         </el-menu-item>
       </a>
       <!-- <a href="http://link.bilibili.com/ctool/vtuber" target="_blank">

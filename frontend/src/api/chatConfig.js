@@ -1,6 +1,6 @@
 import {mergeConfig} from '@/utils'
 
-export const VERSION = "0.4.1"
+export const VERSION = "0.4.2 - modi"
 
 export const DEFAULT_CONFIG = {
   guardOnly: false,
@@ -9,6 +9,7 @@ export const DEFAULT_CONFIG = {
   admins: '',
   blockUsers: '',
   fuzzyMatch: false,
+  cookie: ''
 }
 
 export function setLocalConfig (config) {

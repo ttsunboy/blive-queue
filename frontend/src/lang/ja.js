@@ -1,8 +1,11 @@
 export default {
   sidebar: {
     home: 'トップページ',
+    dash: 'ダッシュボード',
     stylegen: 'スタイルジェネレータ',
     help: 'ヘルプ',
+    orig: '元·',
+    my: 'ニュー·',
     projectAddress: 'プロジェクトアドレス',
     giftRecordOfficial: '公式スーパーチャット記録',
   },
@@ -38,7 +41,8 @@ export default {
     pinyin: 'ピンイン',
     kana: '仮名',
 
-    roomUrl: 'ルームのURL',
+    roomUrl: 'ラインのURL',
+    cookie: 'ビリビリのCookie',
     copy: 'コピー',
     enterRoom: 'ルームに入る',
     enterTestRoom: 'テストルームに入る',
@@ -86,9 +90,9 @@ export default {
     bgColor: '背景色',
     useBarsInsteadOfBg: '背景に代わります',
     messageBgColor: 'コメント背景色',
-    ownerMessageBgColor: 'オーナーコメント背景色',
-    moderatorMessageBgColor: '管理者コメント背景色',
-    memberMessageBgColor: 'メンバーコメント背景色',
+    ownerMessageBgColor: 'ゴバーナーコメント背景色',
+    moderatorMessageBgColor: 'アドミラルコメント背景色',
+    memberMessageBgColor: 'キャプテンコメント背景色',
 
     scAndNewMember: 'スーパーチャット、新メンバー',
     firstLineFont: '1行目のフォント',
