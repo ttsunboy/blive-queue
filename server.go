@@ -253,15 +253,6 @@ func (s *Server) HandleGiftJoinQueue(gift *message.Gift) {
 	} else {
 		if ok := s.Queue.UpdateGifts(&u); ok {
 			log.Infof("更新成功: %s (uid: %d) 的礼物电池数 %d 计入了", gift.Uname, gift.Uid, gft)
-			err := s.Eio.BoardCastEvent(eio.Event{
-				EventName: "ADD_USER",
-				Data:      NewLiveUser(&u).Json(),
-			})
-			if err != nil {
-				log.Error("同步排队事件失败: 请尝试在控制台手动点击 “同步” 按钮")
-			} else {
-				log.Errorf("更新失败: %s (uid: %d) 的礼物数据没有写入", gift.Uname, gift.Uid)
-			}
 		}
 	}
 }
