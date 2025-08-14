@@ -12,7 +12,8 @@ import (
 )
 
 type Queue struct {
-	mu sync.RWMutex
+	mu     sync.RWMutex
+	roomID string
 }
 
 type SyncMessage struct {
@@ -54,8 +55,8 @@ func (b LiveUser) Json() string {
 	return string(marshal)
 }
 
-func NewQueue() *Queue {
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+func NewQueue(roomID string) *Queue {
+	db, err := sql.Open("sqlite3", "file:queue_"+roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		log.Error("打开数据库失败: ", err)
 		// Don't return nil, return an empty Queue
@@ -80,13 +81,15 @@ func NewQueue() *Queue {
 	db.Exec(`CREATE TABLE IF NOT EXISTS lastCutin (
         uid INTEGER PRIMARY KEY
     );`)
-	return &Queue{}
+	return &Queue{
+		roomID: roomID,
+	}
 }
 
 func (q *Queue) Add(u *QueueUser) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
 	}
@@ -170,7 +173,7 @@ func (q *Queue) Remove(uid int) bool {
 
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
 	}
@@ -225,7 +228,7 @@ func (q *Queue) Resort(oldIndex int, newIndex int) bool {
 
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
 	}
@@ -271,7 +274,7 @@ func (q *Queue) Resort(oldIndex int, newIndex int) bool {
 func (q *Queue) Clear() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return
 	}
@@ -283,7 +286,7 @@ func (q *Queue) Clear() {
 func (q *Queue) ClearTotalGifts() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return
 	}
@@ -295,7 +298,7 @@ func (q *Queue) ClearTotalGifts() {
 func (q *Queue) Top(uid int) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
 	}
@@ -313,7 +316,7 @@ func (q *Queue) Top(uid int) bool {
 func (q *Queue) FetchOrderedQueue() ([]*QueueUser, error) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return nil, err
 	}
@@ -555,7 +558,7 @@ func (q *Queue) UpdateGifts(u *QueueUser) bool {
 
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
 	}
@@ -592,7 +595,7 @@ func (q *Queue) UpdateGifts(u *QueueUser) bool {
 }
 
 func (q *Queue) In(u *QueueUser) bool {
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
 	}
@@ -621,7 +624,7 @@ func (q *Queue) Encode() *SyncMessage {
 func (q *Queue) formCutin() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return
 	}
@@ -653,7 +656,7 @@ func (q *Queue) formCutinAndClearQueue() {
 func (q *Queue) clearCutin() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return
 	}
@@ -663,7 +666,7 @@ func (q *Queue) clearCutin() {
 }
 
 func (q *Queue) isCutin(uid int) bool {
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
 	}
@@ -678,7 +681,7 @@ func (q *Queue) isCutin(uid int) bool {
 }
 
 func (q *Queue) isNow(uid int) bool {
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
 	}
@@ -695,7 +698,7 @@ func (q *Queue) isNow(uid int) bool {
 func (q *Queue) Start(uid int) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
 	}

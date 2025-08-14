@@ -6,4 +6,4 @@ build
 test
 blive-queue.exe
 *~
-queue.db
+queue*.db

@@ -29,7 +29,7 @@ func NewServer() *Server {
 	return &Server{
 		Eio:           eio.NewServer(),
 		DanmakuClient: nil,
-		Queue:         NewQueue(),
+		Queue:         NewQueue("0"),
 		Rule:          DefaultRule(),
 		Pause:         false,
 	}
@@ -154,6 +154,7 @@ func (s *Server) ConnectDanmakuServer(roomID string, cookie string) {
 	s.DanmakuClient = c
 	s.RoomID = roomID
 	log.Info("连接到房间: ", roomID)
+	s.Queue = NewQueue(roomID)
 }
 
 // HandleDanmaku 处理弹幕，弹幕的原始数据应只停留在这个函数。往下传的参数全部应该为 message.User
