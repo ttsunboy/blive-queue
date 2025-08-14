@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Akegarasu/blive-queue/eio"
+	bliveApi "github.com/Akegarasu/blivedm-go/api"
 	bliveClient "github.com/Akegarasu/blivedm-go/client"
 	"github.com/Akegarasu/blivedm-go/message"
 
@@ -159,6 +160,9 @@ func (s *Server) ConnectDanmakuServer(roomID string, cookie string) {
 func (s *Server) HandleDanmaku(d *message.Danmaku) {
 	if s.Pause {
 		return
+	}
+	if dev {
+		log.Info("弹幕内容: ", d.Content)
 	}
 	if s.Rule.fuzzyMatch {
 		if strings.Contains(d.Content, s.Rule.cancelKeyword) {
@@ -342,4 +346,17 @@ func (s *Server) HandleLiveStart(m *message.LiveStart) {
 	if err != nil {
 		log.Error("同步清空排队事件失败: 请尝试在控制台手动点击 “同步” 按钮")
 	}
+}
+
+func (s *Server) sendDanmaku(msg string) error {
+	d, err := bliveApi.SendDefaultDanmaku(s.RoomID, msg, &bliveApi.BiliVerify{
+		Csrf:     "",
+		SessData: "",
+	})
+	if err != nil {
+		log.Error("弹幕发送失败")
+		return err
+	}
+	log.Infof("发送了弹幕: %s", d.Msg)
+	return nil
 }

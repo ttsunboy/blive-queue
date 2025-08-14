@@ -113,12 +113,16 @@ func (q *Queue) Add(u *QueueUser) bool {
 		err = sql.ErrNoRows
 		if u.GuardLevel > 80 {
 			if level < u.GuardLevel {
-				_, err = db.Exec("UPDATE queue SET level = ?, gifts = ?, timestamp = CURRENT_TIMESTAMP WHERE uid = ?", u.GuardLevel, 0, u.Uid)
+				_, err = db.Exec("UPDATE queue SET level = ?, timestamp = CURRENT_TIMESTAMP WHERE uid = ?", u.GuardLevel, u.Uid)
+				if err != nil {
+					return false
+				}
 			}
 		} else if gf > 0 {
-			if gifts >= 52 {
-				gf = gifts + u.Gifts
-				_, err = db.Exec("UPDATE queue SET gifts = ? WHERE uid = ?", gf, u.Uid)
+			gf = gifts + u.Gifts
+			_, err = db.Exec("UPDATE queue SET gifts = ? WHERE uid = ?", gf, u.Uid)
+			if err != nil {
+				return false
 			}
 		}
 	} else {
@@ -144,17 +148,14 @@ func (q *Queue) Add(u *QueueUser) bool {
 		if err != nil {
 			return false
 		}
-		_, err = db.Exec("DELETE FROM totalGifts WHERE uid = ?", u.Uid)
-		if err != nil {
-			return false
-		}
+		db.Exec("DELETE FROM totalGifts WHERE uid = ?", u.Uid)
 	}
 	if q.isCutin(u.Uid) {
 		_, err = db.Exec("UPDATE queue SET topped = 65536 WHERE uid = ?", u.Uid)
 		if err != nil {
 			return false
 		}
-		_, err = db.Exec("DELETE FROM lastCutin WHERE uid = ?", u.Uid)
+		db.Exec("DELETE FROM lastCutin WHERE uid = ?", u.Uid)
 	}
 	return err == nil
 }
@@ -543,6 +544,15 @@ func (q *Queue) FetchOrderedQueue() ([]*QueueUser, error) {
 }
 
 func (q *Queue) UpdateGifts(u *QueueUser) bool {
+	// 先判断是否需要递归调用 Add
+	q.mu.RLock()
+	needAdd := q.In(u)
+	q.mu.RUnlock()
+	if needAdd {
+		// 递归调用放在锁外，避免死锁
+		return q.Add(u)
+	}
+
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	db, err := sql.Open("sqlite3", "file:queue.db?cache=shared&mode=rwc")
@@ -555,31 +565,30 @@ func (q *Queue) UpdateGifts(u *QueueUser) bool {
 		return false
 	}
 
-	_, err = db.Exec("INSERT INTO totalGifts VALUES (?, ?, ?, ?) ON CONFLICT(uid) DO UPDATE SET gifts = gifts + ?", u.Uid, u.Uname, u.GuardLevel, u.Gifts, u.Gifts)
-	if err != nil {
-		return false
-	}
+	db.Exec("INSERT INTO totalGifts VALUES (?, ?, ?, ?) ON CONFLICT(uid) DO UPDATE SET gifts = gifts + ?", u.Uid, u.Uname, u.GuardLevel, u.Gifts, u.Gifts)
 	var gft int
 	err = db.QueryRow("SELECT gifts FROM totalGifts WHERE uid = ?", u.Uid).Scan(&gft)
 	if err != nil {
 		return false
 	}
 	if gft >= 52 {
-		if ok := q.Add(&QueueUser{
+		q.mu.Unlock() // 先解锁
+		ok := q.Add(&QueueUser{
 			Uid:        u.Uid,
 			Uname:      u.Uname,
 			GuardLevel: u.GuardLevel,
 			Gifts:      gft,
 			Now:        0,
-		}); ok {
+		})
+		q.mu.Lock() // 重新加锁
+		if ok {
 			_, err = db.Exec("DELETE FROM totalGifts WHERE uid = ?", u.Uid)
 			return err == nil
 		} else {
 			return false
 		}
-	} else {
-		return true
 	}
+	return true
 }
 
 func (q *Queue) In(u *QueueUser) bool {

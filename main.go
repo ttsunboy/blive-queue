@@ -15,12 +15,12 @@ import (
 var (
 	dev     bool
 	input   string
-	webPort = 8080
+	webPort = 13579
 	version = "v0.4.2"
 )
 
 func init() {
-	flag.BoolVar(&dev, "dev", false, "开发模式")
+	flag.BoolVar(&dev, "dev", true, "开发模式")
 	log.SetFormatter(&easy.Formatter{
 		TimestampFormat: "2006-01-02 15:04:05",
 		LogFormat:       "[排队姬][%time%][%lvl%]: %msg% \n",
@@ -36,7 +36,6 @@ func main() {
 	defer s.DanmakuClient.Stop()
 	if !dev {
 		gin.SetMode(gin.ReleaseMode)
-		webPort = 13579
 		go checkUpdate()
 	}
 	router := gin.New()
