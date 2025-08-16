@@ -55,7 +55,15 @@ func main() {
 	}
 	router.Use(static.Serve("/", fs))
 	router.NoRoute(func(c *gin.Context) {
-		c.File("./frontend/dist/index.html")
+		// 直接用 embed 的文件系统返回 index.html
+		file, err := frontend.Open("frontend/dist/index.html")
+		if err != nil {
+			c.String(404, "index.html not found")
+			return
+		}
+		defer file.Close()
+		stat, _ := file.Stat()
+		c.DataFromReader(200, stat.Size(), "text/html", file, nil)
 	})
 	for {
 		if checkPort(webPort) {
