@@ -20,7 +20,7 @@ var (
 )
 
 func init() {
-	flag.BoolVar(&dev, "dev", true, "开发模式")
+	flag.BoolVar(&dev, "dev", false, "开发模式")
 	log.SetFormatter(&easy.Formatter{
 		TimestampFormat: "2006-01-02 15:04:05",
 		LogFormat:       "[排队姬][%time%][%lvl%]: %msg% \n",

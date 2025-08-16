@@ -89,6 +89,10 @@ func NewQueue(roomID string) *Queue {
 func (q *Queue) Add(u *QueueUser) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	return q._Add(u)
+}
+
+func (q *Queue) _Add(u *QueueUser) bool {
 	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
@@ -99,7 +103,7 @@ func (q *Queue) Add(u *QueueUser) bool {
 		return false
 	}
 
-	rows, err := db.Query("SELECT uid FROM queue WHERE uid = ?", u.Uid)
+	rows, err := db.Query("SELECT level, gifts FROM queue WHERE uid = ?", u.Uid)
 	if err != nil {
 		return false
 	}
@@ -107,10 +111,8 @@ func (q *Queue) Add(u *QueueUser) bool {
 
 	gf := u.Gifts
 	if rows.Next() {
-		var uid, level, gifts int
-		var nickname string
-		var beforeUid sql.NullInt64
-		if err := rows.Scan(&uid, &nickname, &level, &gifts, &beforeUid); err != nil {
+		var level, gifts int
+		if err := rows.Scan(&level, &gifts); err != nil {
 			return false
 		}
 		err = sql.ErrNoRows
@@ -164,13 +166,6 @@ func (q *Queue) Add(u *QueueUser) bool {
 }
 
 func (q *Queue) Remove(uid int) bool {
-	/*
-		// Get a list of users in the queue
-		list, err := q.FetchOrderedQueue()
-		if err != nil {
-			return false
-	*/
-
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
@@ -179,97 +174,9 @@ func (q *Queue) Remove(uid int) bool {
 	}
 	defer db.Close()
 
-	/*
-		// Check if someone is inserted before the removed user
-		for i, user := range list {
-			if user.Uid == uid {
-				// If we found the user, check if the one before was inserted using before_uid
-				if i > 0 {
-					var exists int
-					err = db.QueryRow("SELECT 1 FROM queue WHERE uid = ? AND before_uid = ?", list[i-1].Uid, list[i].Uid).Scan(&exists)
-					if err != nil {
-						break
-					}
-					if exists > 0 {
-						var nextUid int
-						if i+1 < len(list) {
-							nextUid = list[i+1].Uid
-						} else {
-							nextUid = 0
-						}
-						_, err = db.Exec("UPDATE queue SET before_uid = ? WHERE uid = ?", nextUid, list[i-1].Uid)
-						if err != nil {
-							break
-						}
-					}
-				}
-				break
-			}
-		}
-	*/
-
-	// Now you can safely remove this user without ruining the whole queue
 	_, err = db.Exec("DELETE FROM queue WHERE uid = ?", uid)
 	return err == nil
 }
-
-/*
-func (q *Queue) Resort(oldIndex int, newIndex int) bool {
-	if oldIndex == newIndex {
-		return false
-	}
-	list, err := q.FetchOrderedQueue()
-	if err != nil {
-		return false
-	}
-	if oldIndex < 0 || oldIndex >= len(list) || newIndex < 0 || newIndex >= len(list) {
-		return false
-	}
-
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return false
-	}
-	defer db.Close()
-
-	var beforeUid int
-
-	// Determine the new beforeUid for the moved item
-	if newIndex+1 < len(list) {
-		beforeUid = list[newIndex].Uid
-	} else {
-		beforeUid = -1
-	}
-	// Update the before_uid of the moved item
-	_, err = db.Exec("UPDATE queue SET before_uid = ? WHERE uid = ?", beforeUid, list[oldIndex].Uid)
-	if err != nil {
-		return false
-	}
-	// Check and update the before_uid of the item before it in old order, aka the item with a before_uid pointing to this moved item
-	if oldIndex > 0 {
-		var oldbeforeUid int
-		if oldIndex+1 < len(list) {
-			oldbeforeUid = list[oldIndex+1].Uid
-		} else {
-			oldbeforeUid = 0
-		}
-		_, err = db.Exec("UPDATE queue SET before_uid = ? WHERE uid = ?", oldbeforeUid, list[oldIndex-1].Uid)
-		if err != nil {
-			return false
-		}
-	}
-	// Update the before_uid of the item before in new order
-	if newIndex > 0 {
-		_, err = db.Exec("UPDATE queue SET before_uid = ? WHERE uid = ?", list[oldIndex].Uid, list[newIndex-1].Uid)
-		if err != nil {
-			return false
-		}
-	}
-	return true
-}
-*/
 
 func (q *Queue) Clear() {
 	q.mu.Lock()
@@ -298,6 +205,10 @@ func (q *Queue) ClearTotalGifts() {
 func (q *Queue) Top(uid int) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	return q._Top(uid)
+}
+
+func (q *Queue) _Top(uid int) bool {
 	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
@@ -321,241 +232,116 @@ func (q *Queue) FetchOrderedQueue() ([]*QueueUser, error) {
 		return nil, err
 	}
 	defer db.Close()
-
-	type userRow struct {
-		user      *QueueUser
-		beforeUid int // 0, -1, or >0
-	}
-	users := make(map[int]userRow)
+	users := make(map[int]QueueUser)
 	var uidList []int
 
-	// 0. One(s) now handleing
-	rows, err := db.Query("SELECT uid, nickname, level, gifts, topped FROM queue WHERE now = 1")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var uid, level, gifts int
-		var nickname string
-		var beforeUid sql.NullInt64
-		if err := rows.Scan(&uid, &nickname, &level, &gifts, &beforeUid); err != nil {
-			continue
-		}
-		bid := 0
-		if beforeUid.Valid {
-			bid = int(beforeUid.Int64)
-		}
-		users[uid] = userRow{
-			user: &QueueUser{
-				Uid:        uid,
-				Uname:      nickname,
-				GuardLevel: level,
-				Gifts:      gifts,
-				Now:        1,
-			},
-			beforeUid: bid,
-		}
-		uidList = append(uidList, uid)
+	querySet := [...]string{
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 1",                                                                                      // 0. NOW
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 0 AND topped > 0 ORDER BY topped DESC, level DESC, gifts DESC, timestamp ASC",           // 1. Topped users
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 0 AND topped = 0 AND level > 0 ORDER BY level DESC, timestamp ASC",                      // 2. New & old abos
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 0 AND topped = 0 AND level = 0 AND gifts >= 52 ORDER BY gifts DESC, timestamp ASC",      // 3. Cut-ins
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 0 AND topped = 0 AND level = 0 AND gifts < 52 AND timestamp > 0 ORDER BY timestamp ASC", // 4. All users
 	}
 
-	// 1. Topped users
-	rows, err = db.Query("SELECT uid, nickname, level, gifts, topped FROM queue WHERE now = 0 AND topped > 0 ORDER BY topped DESC, level DESC, gifts DESC, timestamp ASC")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	for i := 0; i < len(querySet); i++ {
+		rows, err := db.Query(querySet[i])
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
 
-	for rows.Next() {
-		var uid, level, gifts int
-		var nickname string
-		var beforeUid sql.NullInt64
-		if err := rows.Scan(&uid, &nickname, &level, &gifts, &beforeUid); err != nil {
-			continue
-		}
-		bid := 0
-		if beforeUid.Valid {
-			bid = int(beforeUid.Int64)
-		}
-		users[uid] = userRow{
-			user: &QueueUser{
-				Uid:        uid,
-				Uname:      nickname,
-				GuardLevel: level,
-				Gifts:      gifts,
-				Now:        0,
-			},
-			beforeUid: bid,
-		}
-		uidList = append(uidList, uid)
-	}
-
-	// 2. New & old abos
-	rows, err = db.Query("SELECT uid, nickname, level, gifts, topped FROM queue WHERE now = 0 AND topped = 0 AND level > 0 ORDER BY level DESC, timestamp ASC")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var uid, level, gifts int
-		var nickname string
-		var beforeUid sql.NullInt64
-		if err := rows.Scan(&uid, &nickname, &level, &gifts, &beforeUid); err != nil {
-			continue
-		}
-		bid := 0
-		if beforeUid.Valid {
-			bid = int(beforeUid.Int64)
-		}
-		users[uid] = userRow{
-			user: &QueueUser{
-				Uid:        uid,
-				Uname:      nickname,
-				GuardLevel: level,
-				Gifts:      gifts,
-				Now:        0,
-			},
-			beforeUid: bid,
-		}
-		uidList = append(uidList, uid)
-	}
-
-	// 3. Cut-ins
-	rows, err = db.Query("SELECT uid, nickname, level, gifts, topped FROM queue WHERE now = 0 AND topped = 0 AND level = 0 AND gifts >= 52 ORDER BY gifts DESC, timestamp ASC")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var uid, level, gifts int
-		var nickname string
-		var beforeUid sql.NullInt64
-		if err := rows.Scan(&uid, &nickname, &level, &gifts, &beforeUid); err != nil {
-			continue
-		}
-		bid := 0
-		if beforeUid.Valid {
-			bid = int(beforeUid.Int64)
-		}
-		users[uid] = userRow{
-			user: &QueueUser{
-				Uid:        uid,
-				Uname:      nickname,
-				GuardLevel: level,
-				Gifts:      gifts,
-				Now:        0,
-			},
-			beforeUid: bid,
-		}
-		uidList = append(uidList, uid)
-	}
-
-	// 4. All users
-	rows, err = db.Query("SELECT uid, nickname, level, gifts, topped FROM queue WHERE now = 0 AND topped = 0 AND level = 0 AND gifts < 52 AND timestamp > 0 ORDER BY timestamp ASC")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var uid, level, gifts int
-		var nickname string
-		var beforeUid sql.NullInt64
-		if err := rows.Scan(&uid, &nickname, &level, &gifts, &beforeUid); err != nil {
-			continue
-		}
-		bid := 0
-		if beforeUid.Valid {
-			bid = int(beforeUid.Int64)
-		}
-		users[uid] = userRow{
-			user: &QueueUser{
-				Uid:        uid,
-				Uname:      nickname,
-				GuardLevel: level,
-				Gifts:      gifts,
-				Now:        0,
-			},
-			beforeUid: bid,
-		}
-		uidList = append(uidList, uid)
-	}
-
-	/*
-		ordered := make([]int, 0, len(users))
-		placed := make(map[int]bool)
-
-		// 1. Place users with beforeUid == 0
-		for _, uid := range uidList {
-			row := users[uid]
-			if row.beforeUid == 0 {
-				ordered = append(ordered, uid)
-				placed[uid] = true
+		for rows.Next() {
+			var uid, level, gifts, now int
+			var nickname string
+			if err := rows.Scan(&uid, &nickname, &level, &gifts, &now); err != nil {
+				continue
 			}
-		}
-
-		// 2. Insert users with beforeUid > 0 before their target
-		// Repeat until no more insertions can be made (to handle chains)
-		inserted := true
-		for inserted {
-			inserted = false
-			for uid, row := range users {
-				if row.beforeUid > 0 && !placed[uid] {
-					target := row.beforeUid
-					for i, id := range ordered {
-						if id == target {
-							ordered = append(ordered[:i], append([]int{uid}, ordered[i:]...)...)
-							placed[uid] = true
-							inserted = true
-							break
-						}
-					}
-				}
+			users[uid] = QueueUser{
+				Uid:        uid,
+				Uname:      nickname,
+				GuardLevel: level,
+				Gifts:      gifts,
+				Now:        now,
 			}
+			uidList = append(uidList, uid)
 		}
-
-		// 3. Append users with beforeUid == -1
-		for _, uid := range uidList {
-			row := users[uid]
-			if row.beforeUid == -1 && !placed[uid] {
-				ordered = append(ordered, uid)
-				placed[uid] = true
-			}
-		}
-
-		// 4. Append any users not yet placed (shouldn't happen, but just in case)
-		for _, uid := range uidList {
-			if !placed[uid] {
-				ordered = append(ordered, uid)
-			}
-		}
-	*/
+	}
 
 	var result []*QueueUser
-	/*
-		for _, uid := range ordered {
-			result = append(result, users[uid].user)
-		}
-	*/
 	for _, uid := range uidList {
-		result = append(result, users[uid].user)
+		user := users[uid]
+		result = append(result, &user)
 	}
 	return result, nil
 }
 
-func (q *Queue) UpdateGifts(u *QueueUser) bool {
-	// 先判断是否需要递归调用 Add
+func (q *Queue) FetchFirstUser() *QueueUser {
 	q.mu.RLock()
-	needAdd := q.In(u)
-	q.mu.RUnlock()
-	if needAdd {
-		// 递归调用放在锁外，避免死锁
-		return q.Add(u)
+	defer q.mu.RUnlock()
+	return q._FetchUser(0)
+}
+
+func (q *Queue) _FetchUser(pos int) *QueueUser {
+	if pos < 0 {
+		return nil
+	}
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+
+	var uid, level, gifts, now int
+	var nickname string
+	flag := false
+	_cnt := 0
+
+	querySet := [...]string{
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 1",                                                                                      // 0. NOW
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 0 AND topped > 0 ORDER BY topped DESC, level DESC, gifts DESC, timestamp ASC",           // 1. Topped users
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 0 AND topped = 0 AND level > 0 ORDER BY level DESC, timestamp ASC",                      // 2. New & old abos
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 0 AND topped = 0 AND level = 0 AND gifts >= 52 ORDER BY gifts DESC, timestamp ASC",      // 3. Cut-ins
+		"SELECT uid, nickname, level, gifts, now FROM queue WHERE now = 0 AND topped = 0 AND level = 0 AND gifts < 52 AND timestamp > 0 ORDER BY timestamp ASC", // 4. All users
 	}
 
+	for i := 0; i < len(querySet); i++ {
+		rows, err := db.Query(querySet[i])
+		if err != nil {
+			return nil
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			if err := rows.Scan(&uid, &nickname, &level, &gifts, &now); err != nil {
+				continue
+			}
+			if _cnt < pos {
+				_cnt++
+				continue
+			} else {
+				flag = true
+				break
+			}
+		}
+		if flag {
+			break
+		}
+	}
+
+	if flag {
+		return &QueueUser{
+			Uid:        uid,
+			Uname:      nickname,
+			GuardLevel: level,
+			Gifts:      gifts,
+			Now:        now,
+		}
+	}
+
+	return nil
+}
+
+func (q *Queue) UpdateGifts(u *QueueUser) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
@@ -575,15 +361,13 @@ func (q *Queue) UpdateGifts(u *QueueUser) bool {
 		return false
 	}
 	if gft >= 52 {
-		q.mu.Unlock() // 先解锁
-		ok := q.Add(&QueueUser{
+		ok := q._Add(&QueueUser{
 			Uid:        u.Uid,
 			Uname:      u.Uname,
 			GuardLevel: u.GuardLevel,
 			Gifts:      gft,
 			Now:        0,
 		})
-		q.mu.Lock() // 重新加锁
 		if ok {
 			_, err = db.Exec("DELETE FROM totalGifts WHERE uid = ?", u.Uid)
 			return err == nil
@@ -698,6 +482,10 @@ func (q *Queue) isNow(uid int) bool {
 func (q *Queue) Start(uid int) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	return q._Start(uid)
+}
+
+func (q *Queue) _Start(uid int) bool {
 	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
 	if err != nil {
 		return false
@@ -710,4 +498,26 @@ func (q *Queue) Start(uid int) bool {
 	}
 	_, err = db.Exec("UPDATE queue SET now = 1 WHERE uid = ?", uid)
 	return err == nil
+}
+
+func (q *Queue) NextUser() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	db, err := sql.Open("sqlite3", "file:queue_"+q.roomID+".db?cache=shared&mode=rwc")
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+
+	u := q._FetchUser(0)
+	if u != nil {
+		if u.Now == 1 {
+			u = q._FetchUser(1)
+			if u == nil {
+				return false
+			}
+		}
+		return q._Start(u.Uid)
+	}
+	return false
 }

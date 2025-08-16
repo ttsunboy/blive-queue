@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	hotkey "github.com/ZeronoFreya/go-hotkey"
+
 	"github.com/Akegarasu/blive-queue/eio"
 	bliveApi "github.com/Akegarasu/blivedm-go/api"
 	bliveClient "github.com/Akegarasu/blivedm-go/client"
@@ -110,17 +112,6 @@ func (s *Server) Init() {
 		log.Debug("开始了uid: ", event.Data)
 	})
 
-	/*
-		s.Eio.RegisterEventHandler("RESORT", func(event *eio.Event) {
-			j := gjson.Parse(event.Data)
-			oldIndex := int(j.Get("oldIndex").Int())
-			newIndex := int(j.Get("newIndex").Int())
-			s.Queue.Resort(oldIndex, newIndex)
-			_ = s.Eio.BoardCastEventExceptSelf(*event)
-			log.Infof("排序: %d -> %d", oldIndex, newIndex)
-		})
-	*/
-
 	s.Eio.RegisterEventHandler("PAUSE", func(event *eio.Event) {
 		s.Pause = true
 		log.Info("已暂停排队")
@@ -129,6 +120,14 @@ func (s *Server) Init() {
 	s.Eio.RegisterEventHandler("CONTINUE", func(event *eio.Event) {
 		s.Pause = false
 		log.Info("已继续排队")
+	})
+
+	hotkey.Register("c_m", "up", func() {
+		if s.Queue.NextUser() {
+			log.Info("开始下一位")
+		} else {
+			log.Warn("切换到下一位失败")
+		}
 	})
 }
 

@@ -1,5 +1,5 @@
 <template>
-  <chat-renderer ref="renderer"></chat-renderer>
+  <chat-renderer ref="renderer" @reach-top="onReachTop"></chat-renderer>
 </template>
 
 <script>
@@ -34,10 +34,16 @@ export default {
       message: 'Loaded',
       duration: '500'
     })
-    window.setInterval(() => {
-      client.syncData()
-    }, 1500)
+    this.$refs.renderer.autoScroll()
   },
-  methods: {}
+  methods: {
+    onReachTop () {
+      client.syncData();
+      // 保证同步后停留8秒
+      if (this.$refs.renderer && this.$refs.renderer.pauseAutoScroll) {
+        this.$refs.renderer.pauseAutoScroll(8000);
+      }
+    }
+  }
 }
 </script>

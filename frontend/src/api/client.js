@@ -147,7 +147,9 @@ class Client {
         store.commit('removeAllUsers')
         break
       }
-      case 'RESORT': {
+      case 'RESORT': 
+      case 'TOP_USER': 
+      case 'START_USER': {
         this.syncData()
         break
       }

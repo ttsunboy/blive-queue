@@ -20,7 +20,7 @@
   <tr>
     <td>
       <yt-live-chat-text-message-renderer class="queue-pos">
-        <span v-if="queueNow == 1" id="message" class="style-scope yt-live-chat-text-message-renderer"><marquee direction="left" behavior="scroll" loop="-1" scrollamount="3" style="width: 2em; margin: 0 auto;">当前叫号</marquee></span>
+        <span v-if="queueNow == 1" id="message" class="style-scope yt-live-chat-text-message-renderer">NOW</span>
         <span v-else id="message" class="style-scope yt-live-chat-text-message-renderer" style="margin: 0 auto;">{{ queuePos }}</span>
       </yt-live-chat-text-message-renderer>
     </td>
