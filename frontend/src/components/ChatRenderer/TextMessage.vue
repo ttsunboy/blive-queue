@@ -26,7 +26,7 @@
     </td>
     <td>
       <yt-live-chat-text-message-renderer class="queue-nickname" :author-type="authorTypeText">
-        <span id="message" class="style-scope yt-live-chat-text-message-renderer">{{ authorName }}</span>
+        <span id="message" class="style-scope yt-live-chat-text-message-renderer" style="max-width: calc(100% - 120px);">{{ authorName }}</span>
       </yt-live-chat-text-message-renderer>
     </td>
     <td>
