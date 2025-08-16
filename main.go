@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"flag"
 	"fmt"
 	"os/exec"
@@ -12,11 +13,14 @@ import (
 	easy "github.com/t-tomalak/logrus-easy-formatter"
 )
 
+//go:embed frontend/dist
+var frontend embed.FS
+
 var (
 	dev     bool
 	input   string
 	webPort = 13579
-	version = "v0.4.2"
+	version = "v0.4.3"
 )
 
 func init() {
@@ -45,7 +49,11 @@ func main() {
 		c.JSON(200, s.Queue.Encode())
 	})
 
-	router.Use(static.Serve("/", static.LocalFile("./frontend/dist", false)))
+	fs, err := static.EmbedFolder(frontend, "frontend/dist")
+	if err != nil {
+		panic(err)
+	}
+	router.Use(static.Serve("/", fs))
 	router.NoRoute(func(c *gin.Context) {
 		c.File("./frontend/dist/index.html")
 	})

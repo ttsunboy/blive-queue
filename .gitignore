@@ -1,9 +1,10 @@
 .idea
 .vscode
 *_test.go
-
 build
 test
 blive-queue.exe
 *~
 queue*.db
+winres
+rsrc_*
