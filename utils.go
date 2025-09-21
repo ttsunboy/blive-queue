@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"strconv"
@@ -51,7 +50,7 @@ func GetBytes(url string, headers map[string]string) ([]byte, error) {
 	defer func() {
 		_ = reader.Close()
 	}()
-	return ioutil.ReadAll(reader)
+	return io.ReadAll(reader)
 }
 
 func HTTPGetReadCloser(url string, headers map[string]string) (io.ReadCloser, error) {

@@ -18,6 +18,7 @@ var frontend embed.FS
 
 var (
 	dev     bool
+	trace   bool
 	input   string
 	webPort = 13579
 	version = "v0.4.3"
@@ -25,16 +26,23 @@ var (
 
 func init() {
 	flag.BoolVar(&dev, "dev", false, "开发模式")
+	flag.BoolVar(&trace, "v", false, "启用跟踪日志")
 	log.SetFormatter(&easy.Formatter{
 		TimestampFormat: "2006-01-02 15:04:05",
 		LogFormat:       "[排队姬][%time%][%lvl%]: %msg% \n",
 	})
-	log.SetLevel(log.InfoLevel)
 }
 
 func main() {
 	var err error
 	flag.Parse()
+	log.SetLevel(log.InfoLevel)
+	if trace {
+		log.SetLevel(log.TraceLevel)
+	} else if dev {
+		log.SetLevel(log.DebugLevel)
+	}
+	log.Trace("已显示Trace日志")
 	s := NewServer()
 	s.Init()
 	defer s.DanmakuClient.Stop()

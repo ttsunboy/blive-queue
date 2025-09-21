@@ -39,7 +39,7 @@ func NewServer() *Server {
 
 func (s *Server) Init() {
 	s.Eio.RegisterEventHandler("HEARTBEAT", func(event *eio.Event) {
-		log.Debug("heartbeat")
+		log.Trace("heartbeat")
 	})
 
 	s.Eio.RegisterEventHandler("CONNECT_DANMAKU", func(event *eio.Event) {
@@ -161,8 +161,10 @@ func (s *Server) HandleDanmaku(d *message.Danmaku) {
 	if s.Pause {
 		return
 	}
-	if dev {
-		log.Info("弹幕内容: ", d.Content)
+	if trace {
+		log.Tracef("%#v", d)
+	} else {
+		log.Debug("弹幕内容: ", d.Content)
 	}
 	if s.Rule.fuzzyMatch {
 		if strings.Contains(d.Content, s.Rule.cancelKeyword) {
@@ -216,6 +218,7 @@ func (s *Server) HandleGiftJoinQueue(gift *message.Gift) {
 	if gift.CoinType != "gold" {
 		return
 	}
+	log.Tracef("%#v", gift)
 	ms := message.User{
 		Uid:        gift.Uid,
 		Uname:      gift.Uname,
@@ -252,7 +255,7 @@ func (s *Server) HandleGiftJoinQueue(gift *message.Gift) {
 		}
 	} else {
 		if ok := s.Queue.UpdateGifts(&u); ok {
-			log.Infof("更新成功: %s (uid: %d) 的礼物电池数 %d 计入了", gift.Uname, gift.Uid, gft)
+			log.Debugf("更新成功: %s (uid: %d) 的礼物电池数 %d 计入了", gift.Uname, gift.Uid, gft)
 		}
 	}
 }
