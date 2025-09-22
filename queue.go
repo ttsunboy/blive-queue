@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"time"
 
 	//"github.com/Akegarasu/blivedm-go/message"
 	_ "github.com/mattn/go-sqlite3"
@@ -37,8 +38,12 @@ func UserHomeDir() string {
 }
 
 type Queue struct {
-	mu     sync.RWMutex
-	roomID string
+	mu        sync.RWMutex
+	roomID    string
+	db        *sql.DB
+	giftQueue chan *QueueUser
+	done      chan struct{}
+	cache     sync.Map // 用于缓存用户信息
 }
 
 type SyncMessage struct {
@@ -90,7 +95,13 @@ func NewQueue(roomID string) *Queue {
 		log.Error("打开数据库失败: ", err)
 		// Don't return nil, return an empty Queue
 	}
-	defer db.Close()
+
+	// 生产友好的数据库优化配置
+	db.Exec("PRAGMA synchronous = NORMAL")     // 平衡性能和安全性
+	db.Exec("PRAGMA journal_mode = WAL")       // WAL模式，适合并发
+	db.Exec("PRAGMA temp_store = MEMORY")      // 临时表存储在内存
+	db.Exec("PRAGMA cache_size = 5000")        // 适中的缓存大小
+	db.SetMaxOpenConns(4)                      // 设置合理的连接数
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS queue (
         uid INTEGER PRIMARY KEY,
@@ -110,8 +121,158 @@ func NewQueue(roomID string) *Queue {
 	db.Exec(`CREATE TABLE IF NOT EXISTS lastCutin (
         uid INTEGER PRIMARY KEY
     );`)
-	return &Queue{
-		roomID: roomID,
+	
+	// 创建必要的索引以提高查询性能
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_queue_gifts ON queue(gifts)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_queue_timestamp ON queue(timestamp)")
+	
+	q := &Queue{
+		roomID:    roomID,
+		db:        db,
+		giftQueue: make(chan *QueueUser, 2000), // 生产友好：缓冲2000个gift消息
+		done:      make(chan struct{}),
+	}
+	
+	// 启动2个异步处理goroutine（生产友好配置）
+	go q.processGiftQueue(0)
+	go q.processGiftQueue(1)
+	
+	return q
+}
+
+// Close 关闭队列和数据库连接
+func (q *Queue) Close() {
+	close(q.done)
+	if q.db != nil {
+		q.db.Close()
+	}
+}
+
+// AddGiftAsync 异步添加gift消息
+func (q *Queue) AddGiftAsync(u *QueueUser) {
+	select {
+	case q.giftQueue <- u:
+		// 成功加入队列
+	default:
+		// 队列满了，记录警告但不阻塞
+		log.Warn("Gift queue is full, dropping gift message")
+	}
+}
+
+// processGiftQueue 异步处理gift队列（生产友好版本）
+func (q *Queue) processGiftQueue(workerID int) {
+	batch := make([]*QueueUser, 0, 15) // 生产友好：批量处理15个
+	ticker := time.NewTicker(100 * time.Millisecond) // 保持100ms处理间隔
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case gift := <-q.giftQueue:
+			batch = append(batch, gift)
+			if len(batch) >= 15 { // 生产友好：15个一批
+				q.processBatch(batch)
+				batch = batch[:0] // 重置切片
+			}
+		case <-ticker.C:
+			if len(batch) > 0 {
+				q.processBatch(batch)
+				batch = batch[:0]
+			}
+		case <-q.done:
+			// 处理剩余的消息
+			if len(batch) > 0 {
+				q.processBatch(batch)
+			}
+			return
+		}
+	}
+}
+
+// processBatch 批量处理gift消息
+func (q *Queue) processBatch(gifts []*QueueUser) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	
+	tx, err := q.db.Begin()
+	if err != nil {
+		log.Error("开始事务失败: ", err)
+		return
+	}
+	defer tx.Rollback()
+	
+	for _, gift := range gifts {
+		q.processSingleGift(tx, gift)
+	}
+	
+	if err := tx.Commit(); err != nil {
+		log.Error("提交事务失败: ", err)
+	}
+}
+
+// processSingleGift 处理单个gift消息（在事务中）
+func (q *Queue) processSingleGift(tx *sql.Tx, u *QueueUser) {
+	if q.isNowTx(tx, u.Uid) {
+		return
+	}
+
+	// 先检查缓存
+	if cached, ok := q.cache.Load(u.Uid); ok {
+		cachedUser := cached.(*QueueUser)
+		// 更新缓存
+		cachedUser.Gifts += u.Gifts
+		q.cache.Store(u.Uid, cachedUser)
+	}
+
+	rows, err := tx.Query("SELECT level, gifts FROM queue WHERE uid = ?", u.Uid)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	gf := u.Gifts
+	if rows.Next() {
+		var level, gifts int
+		if err := rows.Scan(&level, &gifts); err != nil {
+			return
+		}
+		if u.GuardLevel > 80 {
+			if level < u.GuardLevel {
+				_, err = tx.Exec("UPDATE queue SET level = ?, timestamp = CURRENT_TIMESTAMP WHERE uid = ?", u.GuardLevel, u.Uid)
+			}
+		} else if gf > 0 {
+			gf = gifts + u.Gifts
+			_, err = tx.Exec("UPDATE queue SET gifts = ? WHERE uid = ?", gf, u.Uid)
+		}
+	} else {
+		if u.GuardLevel > 80 {
+			gf = 0
+		}
+		var gl int
+		switch u.GuardLevel {
+		case 1:
+			gl = 3
+		case 3:
+			gl = 1
+		default:
+			gl = u.GuardLevel
+		}
+		gf_old := 0
+		err = tx.QueryRow("SELECT gifts FROM totalGifts WHERE uid = ?", u.Uid).Scan(&gf_old)
+		if err != nil {
+			gf_old = 0
+		}
+		gf += gf_old
+		_, err = tx.Exec("INSERT INTO queue (uid, nickname, level, gifts) VALUES (?, ?, ?, ?)", u.Uid, u.Uname, gl, gf)
+		if err == nil {
+			tx.Exec("DELETE FROM totalGifts WHERE uid = ?", u.Uid)
+		}
+	}
+	
+	if q.isCutinTx(tx, u.Uid) {
+		_, err = tx.Exec("UPDATE queue SET topped = 65536 WHERE uid = ?", u.Uid)
+		if err == nil {
+			tx.Exec("DELETE FROM lastCutin WHERE uid = ?", u.Uid)
+		}
 	}
 }
 
@@ -122,17 +283,11 @@ func (q *Queue) Add(u *QueueUser) bool {
 }
 
 func (q *Queue) _Add(u *QueueUser) bool {
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return false
-	}
-	defer db.Close()
-
 	if q.isNow(u.Uid) {
 		return false
 	}
 
-	rows, err := db.Query("SELECT level, gifts FROM queue WHERE uid = ?", u.Uid)
+	rows, err := q.db.Query("SELECT level, gifts FROM queue WHERE uid = ?", u.Uid)
 	if err != nil {
 		return false
 	}
@@ -147,14 +302,14 @@ func (q *Queue) _Add(u *QueueUser) bool {
 		err = sql.ErrNoRows
 		if u.GuardLevel > 80 {
 			if level < u.GuardLevel {
-				_, err = db.Exec("UPDATE queue SET level = ?, timestamp = CURRENT_TIMESTAMP WHERE uid = ?", u.GuardLevel, u.Uid)
+				_, err = q.db.Exec("UPDATE queue SET level = ?, timestamp = CURRENT_TIMESTAMP WHERE uid = ?", u.GuardLevel, u.Uid)
 				if err != nil {
 					return false
 				}
 			}
 		} else if gf > 0 {
 			gf = gifts + u.Gifts
-			_, err = db.Exec("UPDATE queue SET gifts = ? WHERE uid = ?", gf, u.Uid)
+			_, err = q.db.Exec("UPDATE queue SET gifts = ? WHERE uid = ?", gf, u.Uid)
 			if err != nil {
 				return false
 			}
@@ -173,62 +328,68 @@ func (q *Queue) _Add(u *QueueUser) bool {
 			gl = u.GuardLevel
 		}
 		gf_old := 0
-		err = db.QueryRow("SELECT gifts FROM totalGifts WHERE uid = ?", u.Uid).Scan(&gf_old)
+		err = q.db.QueryRow("SELECT gifts FROM totalGifts WHERE uid = ?", u.Uid).Scan(&gf_old)
 		if err != nil {
 			gf_old = 0
 		}
 		gf += gf_old
-		_, err = db.Exec("INSERT INTO queue (uid, nickname, level, gifts) VALUES (?, ?, ?, ?)", u.Uid, u.Uname, gl, gf)
+		_, err = q.db.Exec("INSERT INTO queue (uid, nickname, level, gifts) VALUES (?, ?, ?, ?)", u.Uid, u.Uname, gl, gf)
 		if err != nil {
 			return false
 		}
-		db.Exec("DELETE FROM totalGifts WHERE uid = ?", u.Uid)
+		q.db.Exec("DELETE FROM totalGifts WHERE uid = ?", u.Uid)
 	}
 	if q.isCutin(u.Uid) {
-		_, err = db.Exec("UPDATE queue SET topped = 65536 WHERE uid = ?", u.Uid)
+		_, err = q.db.Exec("UPDATE queue SET topped = 65536 WHERE uid = ?", u.Uid)
 		if err != nil {
 			return false
 		}
-		db.Exec("DELETE FROM lastCutin WHERE uid = ?", u.Uid)
+		q.db.Exec("DELETE FROM lastCutin WHERE uid = ?", u.Uid)
 	}
 	return err == nil
+}
+
+// isNowTx 在事务中检查用户是否正在进行
+func (q *Queue) isNowTx(tx *sql.Tx, uid int) bool {
+	exists := 0
+	err := tx.QueryRow("SELECT 1 FROM queue WHERE uid = ? AND now = 1", uid).Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists > 0
+}
+
+// isCutinTx 在事务中检查是否为插队用户
+func (q *Queue) isCutinTx(tx *sql.Tx, uid int) bool {
+	var exists int
+	err := tx.QueryRow("SELECT 1 FROM lastCutin WHERE uid = ?", uid).Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists > 0
 }
 
 func (q *Queue) Remove(uid int) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return false
-	}
-	defer db.Close()
-
-	_, err = db.Exec("DELETE FROM queue WHERE uid = ?", uid)
+	
+	_, err := q.db.Exec("DELETE FROM queue WHERE uid = ?", uid)
 	return err == nil
 }
 
 func (q *Queue) Clear() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return
-	}
-	defer db.Close()
-
-	db.Exec("DELETE FROM queue")
+	
+	q.db.Exec("DELETE FROM queue")
+	q.cache = sync.Map{} // 清空缓存
 }
 
 func (q *Queue) ClearTotalGifts() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return
-	}
-	defer db.Close()
-
-	db.Exec("DELETE FROM total_gifts")
+	
+	q.db.Exec("DELETE FROM totalGifts")
 }
 
 func (q *Queue) Top(uid int) bool {
@@ -238,29 +399,19 @@ func (q *Queue) Top(uid int) bool {
 }
 
 func (q *Queue) _Top(uid int) bool {
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return false
-	}
-	defer db.Close()
-
 	var topped int
-	err = db.QueryRow("SELECT topped FROM queue WHERE now = 0 AND topped < 65535 ORDER BY topped DESC LIMIT 1").Scan(&topped)
+	err := q.db.QueryRow("SELECT topped FROM queue WHERE now = 0 AND topped < 65535 ORDER BY topped DESC LIMIT 1").Scan(&topped)
 	if err != nil {
 		return false
 	}
-	_, err = db.Exec("UPDATE queue SET topped = ? WHERE now = 0 AND uid = ?", topped+1, uid)
+	_, err = q.db.Exec("UPDATE queue SET topped = ? WHERE now = 0 AND uid = ?", topped+1, uid)
 	return err == nil
 }
 
 func (q *Queue) FetchOrderedQueue() ([]*QueueUser, error) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
+	
 	users := make(map[int]QueueUser)
 	var uidList []int
 
@@ -273,7 +424,7 @@ func (q *Queue) FetchOrderedQueue() ([]*QueueUser, error) {
 	}
 
 	for i := 0; i < len(querySet); i++ {
-		rows, err := db.Query(querySet[i])
+		rows, err := q.db.Query(querySet[i])
 		if err != nil {
 			return nil, err
 		}
@@ -371,39 +522,8 @@ func (q *Queue) _FetchUser(pos int) *QueueUser {
 }
 
 func (q *Queue) UpdateGifts(u *QueueUser) bool {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return false
-	}
-	defer db.Close()
-
-	if q.isNow(u.Uid) {
-		return false
-	}
-
-	db.Exec("INSERT INTO totalGifts VALUES (?, ?, ?, ?) ON CONFLICT(uid) DO UPDATE SET gifts = gifts + ?", u.Uid, u.Uname, u.GuardLevel, u.Gifts, u.Gifts)
-	var gft int
-	err = db.QueryRow("SELECT gifts FROM totalGifts WHERE uid = ?", u.Uid).Scan(&gft)
-	if err != nil {
-		return false
-	}
-	if gft >= 52 {
-		ok := q._Add(&QueueUser{
-			Uid:        u.Uid,
-			Uname:      u.Uname,
-			GuardLevel: u.GuardLevel,
-			Gifts:      gft,
-			Now:        0,
-		})
-		if ok {
-			_, err = db.Exec("DELETE FROM totalGifts WHERE uid = ?", u.Uid)
-			return err == nil
-		} else {
-			return false
-		}
-	}
+	// 现在主要使用异步处理，这个方法可以简化
+	q.AddGiftAsync(u)
 	return true
 }
 
@@ -494,14 +614,8 @@ func (q *Queue) isCutin(uid int) bool {
 }
 
 func (q *Queue) isNow(uid int) bool {
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return false
-	}
-	defer db.Close()
-
 	exists := 0
-	err = db.QueryRow("SELECT 1 FROM queue WHERE uid = ? AND now = 1", uid).Scan(&exists)
+	err := q.db.QueryRow("SELECT 1 FROM queue WHERE uid = ? AND now = 1", uid).Scan(&exists)
 	if err != nil {
 		return false
 	}
@@ -515,29 +629,18 @@ func (q *Queue) Start(uid int) bool {
 }
 
 func (q *Queue) _Start(uid int) bool {
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
+	_, err := q.db.Exec("DELETE FROM queue WHERE now = 1")
 	if err != nil {
 		return false
 	}
-	defer db.Close()
-
-	_, err = db.Exec("DELETE FROM queue WHERE now = 1")
-	if err != nil {
-		return false
-	}
-	_, err = db.Exec("UPDATE queue SET now = 1 WHERE uid = ?", uid)
+	_, err = q.db.Exec("UPDATE queue SET now = 1 WHERE uid = ?", uid)
 	return err == nil
 }
 
 func (q *Queue) NextUser() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	db, err := sql.Open("sqlite3", "file:"+UserHomeDir()+"\\AppData\\Roaming\\blive-queue\\queue_"+q.roomID+".db?cache=shared&mode=rwc")
-	if err != nil {
-		return false
-	}
-	defer db.Close()
-
+	
 	u := q._FetchUser(0)
 	if u != nil {
 		if u.Now == 1 {

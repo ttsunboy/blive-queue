@@ -12,8 +12,6 @@ import (
 	bliveClient "github.com/Akegarasu/blivedm-go/client"
 	"github.com/Akegarasu/blivedm-go/message"
 
-	//"github.com/tidwall/gjson"
-
 	log "github.com/sirupsen/logrus"
 )
 
